@@ -187,6 +187,26 @@ print_map (int flags)
     printf("\n");
 }
 
+char *default_config_file()
+{
+    char *cfdir;
+    char *cfpath;
+
+    if ((cfdir = getenv("XDG_CONFIG_HOME")) == NULL) {
+        char *homedir;
+        if ((homedir = getenv("HOME")) == NULL) {
+            return NULL;
+        }
+
+        cfpath = (char *)malloc(strlen(homedir) + strlen("/.config/picocom/picocom.cfg"));
+        sprintf(cfpath, "%s/.config/picocom/picocom.cfg", homedir);
+    } else {
+        cfpath = (char *)malloc(strlen(cfdir) + strlen("/picocom/picocom.cfg"));
+        sprintf(cfpath, "%s/picocom/picocom.cfg", cfdir);
+    }
+
+    return cfpath;
+}
 /**********************************************************************/
 
 struct {
@@ -219,6 +239,7 @@ struct {
     int raise_rts;
     int raise_dtr;
     int quiet;
+    char *config_file;
 } opts = {
     .port = NULL,
     .baud = 9600,
@@ -248,7 +269,8 @@ struct {
     .lower_dtr = 0,
     .raise_rts = 0,
     .raise_dtr = 0,
-    .quiet = 0
+    .quiet = 0,
+    .config_file = NULL,
 };
 
 int sig_exit = 0;
@@ -1691,6 +1713,7 @@ parse_args(int argc, char *argv[])
 
     static struct option longOptions[] =
     {
+        {"config-file", required_argument, 0, 'C'},
         {"receive-cmd", required_argument, 0, 'v'},
         {"send-cmd", required_argument, 0, 's'},
         {"imap", required_argument, 0, 'I' },
