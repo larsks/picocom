@@ -7,7 +7,7 @@ CFLAGS += -Wall -g
 
 LD = $(CC)
 LDFLAGS ?= -g
-LDLIBS ?=
+LDLIBS ?= -lconfuse
 
 all: picocom
 OBJS =

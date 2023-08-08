@@ -37,12 +37,13 @@
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <limits.h>
+#include <confuse.h>
+#include <libgen.h>
 #ifdef USE_FLOCK
 #include <sys/file.h>
 #endif
 #ifdef LINENOISE
 #include <dirent.h>
-#include <libgen.h>
 #endif
 
 #define _GNU_SOURCE
@@ -67,6 +68,7 @@ const char *parity_str[] = {
     [P_MARK] = "mark",
     [P_SPACE] = "space",
     [P_ERROR] = "invalid parity mode",
+    NULL,
 };
 
 /* flow control modes names */
@@ -77,6 +79,42 @@ const char *flow_str[] = {
     [FC_OTHER] = "other",
     [FC_ERROR] = "invalid flow control mode",
 };
+
+typedef struct {
+    const char *name;
+    int value;
+} cfg_value_map;
+
+cfg_value_map valid_flow_values[] = {
+    {"none", FC_NONE},
+    {"hard", FC_RTSCTS},
+    {"rtscts", FC_RTSCTS},
+    {"soft", FC_XONXOFF},
+    {"xonxoff", FC_XONXOFF},
+    {NULL, 0},
+};
+
+cfg_value_map valid_parity_values[] = {
+    {"none", P_NONE},
+    {"even", P_EVEN},
+    {"odd", P_ODD},
+    {"mark", P_MARK},
+    {"space", P_SPACE},
+    {NULL, 0}
+};
+
+#define RTS_DTR_NONE 0
+#define RTS_DTR_RAISE 1
+#define RTS_DTR_LOWER 2
+
+cfg_value_map valid_rts_values[] = {
+    {"none", RTS_DTR_NONE},
+    {"raise", RTS_DTR_RAISE},
+    {"lower", RTS_DTR_LOWER},
+    {NULL, 0}
+};
+
+cfg_value_map *valid_dtr_values = valid_rts_values;
 
 /**********************************************************************/
 
@@ -131,10 +169,7 @@ const char *flow_str[] = {
 #define M_E_DFL (M_DELBS | M_CRCRLF)
 
 /* character mapping names */
-struct map_names_s {
-    const char *name;
-    int flag;
-} map_names[] = {
+cfg_value_map valid_map_values[] = {
     { "crlf", M_CRLF },
     { "crcrlf", M_CRCRLF },
     { "igncr", M_IGNCR },
@@ -162,9 +197,9 @@ parse_map (char *s)
 
     flags = 0;
     while ( (t = strtok(s, ", \t")) ) {
-        for (i=0; (m = map_names[i].name); i++) {
+        for (i=0; (m = valid_map_values[i].name); i++) {
             if ( ! strcmp(t, m) ) {
-                f = map_names[i].flag;
+                f = valid_map_values[i].value;
                 break;
             }
         }
@@ -183,11 +218,12 @@ print_map (int flags)
 
     for (i = 0; i < M_NFLAGS; i++)
         if ( flags & (1 << i) )
-            printf("%s,", map_names[i].name);
+            printf("%s,", valid_map_values[i].name);
     printf("\n");
 }
 
-char *default_config_file()
+char
+*default_config_file()
 {
     char *cfdir;
     char *cfpath;
@@ -207,6 +243,105 @@ char *default_config_file()
 
     return cfpath;
 }
+
+char
+*find_config_file(void)
+{
+    char pathbuf[PATH_MAX];
+    static char filebuf[PATH_MAX];
+    char *path;
+
+    path = getcwd(pathbuf, PATH_MAX);
+    while (1) {
+        snprintf(filebuf, PATH_MAX, "%s/%s", path, ".picocom.conf");
+        if (access(filebuf, R_OK) == 0) {
+            return filebuf;
+        }
+
+        if (strcmp(path, "/") == 0) {
+            break;
+        }
+
+        path = dirname(path);
+    }
+
+    return default_config_file();
+}
+
+int
+cb_validate_single_name(cfg_t *cfg, cfg_opt_t *opt, const char *value, void *result, cfg_value_map *valid_values)
+{
+    for (int i=0; valid_values[i].name; i++) {
+        if (strcmp(value, valid_values[i].name) == 0) {
+            *(long int *)result = valid_values[i].value;
+            return 0;
+        }
+    }
+
+    cfg_error(cfg, "invalid value for %s: %s", opt->name, value);
+    return -1;
+}
+
+int
+cb_validate_list_of_names(cfg_t *cfg, cfg_opt_t *opt, cfg_value_map *valid_values) {
+    char *value;
+
+    for (int i=0; i<opt->nvalues; i++) {
+        value = opt->values[i]->string;
+        for (int j=0; valid_values[j].name; j++) {
+            if (strcmp(value, valid_values[j].name) == 0) {
+                return 0;
+            }
+        }
+    }
+
+    cfg_error(cfg, "invalid value for %s: %s", opt->name, value);
+    return -1;
+}
+
+int
+cb_validate_map(cfg_t *cfg, cfg_opt_t *opt, const char *value, void *result)
+{
+    return cb_validate_single_name(cfg, opt, value, result, valid_map_values);
+}
+
+int
+cb_validate_flow(cfg_t *cfg, cfg_opt_t *opt, const char *value, void *result)
+{
+    return cb_validate_single_name(cfg, opt, value, result, valid_flow_values);
+}
+
+int
+cb_validate_parity(cfg_t *cfg, cfg_opt_t *opt, const char *value, void *result)
+{
+    return cb_validate_single_name(cfg, opt, value, result, valid_parity_values);
+}
+
+int
+cb_validate_rts(cfg_t *cfg, cfg_opt_t *opt, const char *value, void *result)
+{
+    return cb_validate_single_name(cfg, opt, value, result, valid_rts_values);
+}
+
+int
+cb_validate_dtr(cfg_t *cfg, cfg_opt_t *opt, const char *value, void *result)
+{
+    return cb_validate_single_name(cfg, opt, value, result, valid_dtr_values);
+}
+
+int
+map_from_config(cfg_t *cfg, const char *name)
+{
+    int value = 0;
+    cfg_opt_t *opt = cfg_getopt(cfg, name);
+
+    for (int i=0; i<opt->nvalues; i++) {
+        value |= opt->values[i]->number;
+    }
+
+    return value;
+}
+
 /**********************************************************************/
 
 struct {
@@ -239,7 +374,6 @@ struct {
     int raise_rts;
     int raise_dtr;
     int quiet;
-    char *config_file;
 } opts = {
     .port = NULL,
     .baud = 9600,
@@ -270,8 +404,26 @@ struct {
     .raise_rts = 0,
     .raise_dtr = 0,
     .quiet = 0,
-    .config_file = NULL,
 };
+
+cfg_opt_t cfgopts[] = {
+    CFG_BOOL("quiet", 0, CFGF_NONE),
+    CFG_BOOL("echo", 0, CFGF_NONE),
+    CFG_INT_CB("rts", RTS_DTR_NONE, CFGF_NONE, &cb_validate_rts),
+    CFG_INT_CB("dtr", RTS_DTR_NONE, CFGF_NONE, &cb_validate_dtr),
+    CFG_INT("baud", 9600, CFGF_NONE),
+    CFG_INT("databits", 8, CFGF_NONE),
+    CFG_INT_CB("parity", P_NONE, CFGF_NONE, &cb_validate_parity),
+    CFG_INT("stopbits", 1, CFGF_NONE),
+    CFG_STR("port", NULL, CFGF_NONE),
+    CFG_INT_CB("flow", FC_NONE, CFGF_NONE, &cb_validate_flow),
+    CFG_INT_LIST_CB("imap", NULL, CFGF_NONE, &cb_validate_map),
+    CFG_INT_LIST_CB("omap", NULL, CFGF_NONE, &cb_validate_map),
+    CFG_INT_LIST_CB("emap", NULL, CFGF_NONE, &cb_validate_map),
+    CFG_STR("initstring", NULL, CFGF_NONE),
+    CFG_END()
+};
+cfg_t *cfg;
 
 int sig_exit = 0;
 
@@ -1713,7 +1865,6 @@ parse_args(int argc, char *argv[])
 
     static struct option longOptions[] =
     {
-        {"config-file", required_argument, 0, 'C'},
         {"receive-cmd", required_argument, 0, 'v'},
         {"send-cmd", required_argument, 0, 's'},
         {"imap", required_argument, 0, 'I' },
@@ -1743,6 +1894,62 @@ parse_args(int argc, char *argv[])
         {"help", no_argument, 0, 'h'},
         {0, 0, 0, 0}
     };
+
+    char *cfgfile = getenv("PICOCOM_CONFIG_FILE");
+    if (!cfgfile)
+        cfgfile=find_config_file();
+
+    cfg = cfg_init(cfgopts, 0);
+    if (cfgfile) {
+        if (cfg_parse(cfg, cfgfile) == CFG_PARSE_ERROR) {
+            fprintf(stderr, "Failed to parse configuration file\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    // TODO(lks): there has to be a better way...
+    opts.quiet = cfg_getbool(cfg, "quiet");
+    opts.lecho = cfg_getbool(cfg, "echo");
+    opts.baud = cfg_getint(cfg, "baud");
+    opts.stopbits = cfg_getint(cfg, "stopbits");
+    opts.databits = cfg_getint(cfg, "databits");
+    opts.parity = cfg_getint(cfg, "parity");
+    opts.flow = cfg_getint(cfg, "flow");
+    opts.initstring = cfg_getstr(cfg, "initstring");
+
+    opts.imap = map_from_config(cfg, "imap");
+    opts.omap = map_from_config(cfg, "omap");
+    opts.emap = map_from_config(cfg, "emap");
+
+    switch (cfg_getint(cfg, "rts")) {
+        case RTS_DTR_NONE:
+            opts.raise_rts = 0;
+            opts.lower_rts = 0;
+            break;
+        case RTS_DTR_RAISE:
+            opts.raise_rts = 1;
+            opts.lower_rts = 0;
+            break;
+        case RTS_DTR_LOWER:
+            opts.raise_rts = 0;
+            opts.lower_rts = 1;
+            break;
+    }
+
+    switch (cfg_getint(cfg, "dtr")) {
+        case RTS_DTR_NONE:
+            opts.raise_dtr = 0;
+            opts.lower_dtr = 0;
+            break;
+        case RTS_DTR_RAISE:
+            opts.raise_dtr = 1;
+            opts.lower_dtr = 0;
+            break;
+        case RTS_DTR_LOWER:
+            opts.raise_dtr = 0;
+            opts.lower_dtr = 1;
+            break;
+    }
 
     r = 0;
     while (1) {
@@ -1959,15 +2166,18 @@ parse_args(int argc, char *argv[])
     /* --exit overrides --exit-after */
     if ( opts.exit ) opts.exit_after = -1;
 
-    if ( (argc - optind) < 1) {
-        fprintf(stderr, "No port given\n");
-        fprintf(stderr, "Run with '--help'.\n");
-        exit(EXIT_FAILURE);
-    }
-    opts.port = strdup(argv[argc-1]);
-    if ( ! opts.port ) {
-        fprintf(stderr, "Out of memory\n");
-        exit(EXIT_FAILURE);
+    opts.port = cfg_getstr(cfg, "port");
+    if (!opts.port) {
+        if ( (argc - optind) < 1) {
+            fprintf(stderr, "No port given\n");
+            fprintf(stderr, "Run with '--help'.\n");
+            exit(EXIT_FAILURE);
+        }
+        opts.port = strdup(argv[argc-1]);
+        if ( ! opts.port ) {
+            fprintf(stderr, "Out of memory\n");
+            exit(EXIT_FAILURE);
+        }
     }
 
     if ( opts.quiet )
@@ -1976,6 +2186,7 @@ parse_args(int argc, char *argv[])
 #ifndef NO_HELP
     printf("picocom v%s\n", VERSION_STR);
     printf("\n");
+    printf("config file is : %s\n", cfgfile ? cfgfile : "<none>");
     printf("port is        : %s\n", opts.port);
     printf("flowcontrol    : %s\n", flow_str[opts.flow]);
     printf("baudrate is    : %d\n", opts.baud);
