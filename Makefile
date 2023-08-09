@@ -23,11 +23,11 @@ VERSION = $(git describe --long)
 -include version.mk
 
 #CC ?= gcc
-CPPFLAGS += -DVERSION_STR=\"$(VERSION)\"
-CFLAGS += -Wall -g
+CPPFLAGS = -DVERSION_STR=\"$(VERSION)\" $(EXTRA_CPPFLAGS)
+CFLAGS += -Wall -g $(EXTRA_CFLAGS)
 
 LD = $(CC)
-LDFLAGS ?= -g
+LDFLAGS ?= -g $(EXTRA_LDFLAGS)
 LDLIBS ?=
 
 SRCS = picocom.c term.c fdio.c split.c custbaud.c termios2.c custbaud_bsd.c
@@ -76,6 +76,11 @@ endif
 OBJS = $(SRCS:.c=.o)
 DEPS = $(SRCS:.c=.d)
 NODEPS = clean distclean realclean doc
+SUFFIXES += .d
+
+TEST_SRCS = test_configfile.c
+TEST_OBJS = $(TEST_SRCS:.c=.o)
+TEST_DEPS = $(TEST_SRCS:.c=.d)
 
 %.o: %.c %.d
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ -c $<
@@ -84,6 +89,9 @@ NODEPS = clean distclean realclean doc
 	$(CC) $(CPPFLAGS) -MM $< -MF $@
 
 all: picocom
+
+check:
+	echo "CPPFLAGS: $(CPPFLAGS)"
 
 picocom : $(OBJS)
 	$(LD) $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS)
@@ -109,7 +117,7 @@ picocom.1.pdf : picocom.1.html
 	htmldoc -f $@ $<
 
 clean:
-	rm -f $(OBJS) $(DEPS)
+	rm -f $(OBJS) $(DEPS) $(TEST_OBJS) $(TEST_DEPS)
 	rm -f *~
 	rm -f \#*\#
 
@@ -123,5 +131,14 @@ realclean: distclean
 	rm -f CHANGES
 
 ifeq (,$(findstring $(MAKECMDGOALS),$(NODEPS)))
--include $(DEPS)
+-include $(DEPS) $(TEST_DEPS)
 endif
+
+test_picocom: CPPFLAGS+=-DTESTING
+test_picocom: LDFLAGS+=-no-pie
+test_picocom: $(TEST_OBJS) $(OBJS)
+	$(LD) $(LDFLAGS) -o $@ $(TEST_OBJS) $(OBJS) $(LDLIBS) -lcriterion
+
+.PHONY: test
+test: realclean test_picocom
+	./test_picocom --verbose
