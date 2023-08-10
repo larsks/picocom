@@ -19,6 +19,10 @@ FEATURE_LINENOISE ?= 1
 # Set this to 0 to disable help strings (saves ~ 4-6 Kb)
 FEATURE_HELP ?= 1
 
+# Set this to 1 to enable code coverage support when building
+# tests.
+FEATURE_COVERAGE ?= 0
+
 VERSION = $(git describe --long)
 -include version.mk
 
@@ -77,10 +81,12 @@ OBJS = $(SRCS:.c=.o)
 DEPS = $(SRCS:.c=.d)
 NODEPS = clean distclean realclean doc
 SUFFIXES += .d
+COVS = $(SRCS:.c=.gcda) $(SRCS:.c=.gcno)
 
 TEST_SRCS = test_configfile.c test_split.c test_options.c
 TEST_OBJS = $(TEST_SRCS:.c=.o)
 TEST_DEPS = $(TEST_SRCS:.c=.d)
+TEST_COVS = $(TEST_SRCS:.c=.gcda) $(TEST_SRCS:.c=.gcno)
 
 %.o: %.c %.d
 	$(CC) $(CFLAGS) $(CPPFLAGS) -o $@ -c $<
@@ -117,7 +123,8 @@ picocom.1.pdf : picocom.1.html
 	htmldoc -f $@ $<
 
 clean:
-	rm -f $(OBJS) $(DEPS) $(TEST_OBJS) $(TEST_DEPS)
+	rm -f $(OBJS) $(COVS) $(TEST_OBJS) $(TEST_COVS)
+	rm -rf coverage
 	rm -f *~
 	rm -f \#*\#
 
@@ -125,6 +132,7 @@ distclean: clean
 	rm -f picocom
 
 realclean: distclean
+	rm -f $(DEPS) $(TEST_DEPS)
 	rm -f picocom.1
 	rm -f picocom.1.html
 	rm -f picocom.1.pdf
@@ -136,9 +144,22 @@ endif
 
 test_picocom: CPPFLAGS+=-DTESTING
 test_picocom: LDFLAGS+=-no-pie
+ifeq ($(FEATURE_COVERAGE),1)
+test_picocom: CFLAGS+=-fprofile-arcs -ftest-coverage
+endif
 test_picocom: $(TEST_OBJS) $(OBJS)
-	$(LD) $(LDFLAGS) -o $@ $(TEST_OBJS) $(OBJS) $(LDLIBS) -lcriterion
+	$(LD) $(LDFLAGS) -o $@ $(TEST_OBJS) $(OBJS) $(LDLIBS) -lcriterion -lgcov
 
 .PHONY: test
-test: realclean test_picocom
+test: distclean test_picocom
 	./test_picocom --verbose
+
+ifeq ($(FEATURE_COVERAGE),1)
+.PHONY: coverage
+coverage: coverage/picocom.html
+
+coverage/picocom.html: test_picocom
+	mkdir -p coverage
+	gcovr -r . --html --html-details -o coverage/picocom.html \
+		--exclude 'test_*' --exclude 'linenoise*'
+endif

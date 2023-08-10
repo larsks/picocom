@@ -73,3 +73,15 @@ Test(ConfigFile, default_configfile_respects_xdg_home) {
     setenv("XDG_CONFIG_HOME", "/test", 1);
     cr_assert(strcmp(default_config_file(), "/test/picocom/picocom.conf") == 0);
 }
+
+Test(ConfigFile, default_configfile_respects_home) {
+    setenv("HOME", "/test", 1);
+    unsetenv("XDG_CONFIG_HOME");
+    cr_assert(strcmp(default_config_file(), "/test/.config/picocom/picocom.conf") == 0);
+}
+
+Test(ConfigFile, default_configfile_returns_null_if_no_home) {
+    unsetenv("HOME");
+    unsetenv("XDG_CONFIG_HOME");
+    cr_assert(default_config_file() == NULL);
+}

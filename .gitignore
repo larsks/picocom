@@ -1,1 +1,11 @@
 GNUmakefile
+*.o
+*.so
+*.d
+*.gcno
+*.gcda
+*~
+/picocom
+picocom.1
+picocom.1.html
+picocom.1.pdf
