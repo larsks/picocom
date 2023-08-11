@@ -1,0 +1,57 @@
+name: Run tests
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-picocom:
+    name: Ensure that picocom compiles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: |
+          set -e
+          sudo apt-get -y install libconfuse-dev libconfuse2
+          make
+          ./picocom --help
+
+  run-tests:
+    name: Run picocom unit tests
+    runs-on: ubuntu-latest
+    env:
+      CRITERION_VERSION: "2.4.2"
+      GCC_VERSION: "12"
+    steps:
+      - uses: actions/checkout@v3
+      - name: cache criterion
+        uses: actions/cache@v3
+        with:
+          key: ${{ runner.os }}-criterion-${{ env.CRITERION_VERSION }}
+          path: |
+            ~/pkg
+      - name: install packages
+        run: |
+          sudo apt-get -y install \
+            libconfuse-dev \
+            libconfuse2
+      - name: install criterion
+        run: |
+          if ! [ -f $HOME/pkg/lib/libcriterion.so ]; then
+            set -e
+            mkdir -p ~/pkg
+            curl -LSs -o criterion.tar.xz https://github.com/Snaipe/Criterion/releases/download/v${CRITERION_VERSION}/criterion-${CRITERION_VERSION}-linux-x86_64.tar.xz
+            tar -C ~/pkg --strip-components=1 -xf criterion.tar.xz
+          fi
+      - name: run tests
+        run: |
+          set -e
+          export CC=gcc-${GCC_VERSION}
+          export LD_LIBRARY_PATH=$HOME/pkg/lib
+          echo "::group::Build picocom"
+          make test_picocom \
+            EXTRA_CPPFLAGS=-I$HOME/pkg/include \
+            EXTRA_LDFLAGS=-L$HOME/pkg/lib
+          echo "::endgroup::"
+          echo "::group::Tests"
+          ./test_picocom --verbose
+          echo "::endgroup::"
