@@ -13,7 +13,7 @@ extern void init_defaults(void);
 
 int parse_config_buf(const char *buf) { return cfg_parse_buf(cfg, buf); }
 
-void setup(void) {
+static void setup(void) {
   init_defaults();
   init_config();
 
