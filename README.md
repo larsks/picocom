@@ -1,11 +1,24 @@
-# picocom
-Minimal dumb-terminal emulator
+![[Picocom][]](assets/picocom-logo.png)
 
-by Nick Patavalis (npat@efault.net)
+[Picocom][] is a minimal dumb-terminal emulation program.
 
-The latest release can be downloaded from:
+[picocom]: https://picocom-ng.oddbit.com
 
-> https://github.com/npat-efault/picocom/releases
+## Origins
+
+This is a fork of Nick Patavalis's origin [picocom][nick] repository,
+which was last updated in 2018. I have incorporated most of the pull
+requests from Nick's repository as well as several of the changes
+introduced by [Wolfram Sang][].
+
+I am working on adding configuration file support, automated testing,
+and an automated release process. I am happy to accept bug reports and
+contributions (see [Contributing](#contributing), below).
+
+[nick]: https://github.com/npat-efault/picocom
+[wolfram sang]: https://gitlab.com/wsakernel/picocom
+
+## Overview
 
 As its name suggests, *picocom* is a minimal dumb-terminal emulation
 program. It is, in principle, very much like minicom, only it's "pico"
@@ -446,3 +459,24 @@ To see if your binary has been compiled with custom baudrate support,
 and / or if it has detected the `NO_CUSTOM_BAUD` variable, run it with
 the **--help** option, and take a look at the first few lines of
 output.
+
+## Contributing
+
+### Reporting bugs
+
+Open bug reports in the [issue tracker for this repository][issues].
+
+[issues]: https://github.com/picocom-ng/picocom/issues
+
+### Contributing features
+
+Please feel free to open pull requests for new features! Pull requests
+are expected to pass any automated checks, and must include both tests
+and documentation.
+
+## Authors
+
+Picocom was originally written by Nick Patavalis. This fork is
+maintained by Lars Kellogg-Stedman, <lars@oddbit.com>. For a complete
+list of contributors, see `git log`.
+
